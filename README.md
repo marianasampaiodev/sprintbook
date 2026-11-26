@@ -1,16 +1,3 @@
-# Sprintbook
-
-## Executar localmente
-
-Configure `.env.local` com a URL do projeto Supabase e a chave publishable:
-
-```env
-VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=<publishable-key>
-```
-
-O app também aceita as variáveis legadas `NEXT_PUBLIC_SUPABASE_URL` e
-`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 
 Instale as dependências e inicie o Vite:
 
