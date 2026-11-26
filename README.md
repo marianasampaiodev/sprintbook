@@ -1,16 +1,28 @@
-# React + Vite
+# Sprintbook
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Executar localmente
 
-Currently, two official plugins are available:
+Configure `.env.local` com a URL do projeto Supabase e a chave publishable:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```env
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<publishable-key>
+```
 
-## React Compiler
+O app também aceita as variáveis legadas `NEXT_PUBLIC_SUPABASE_URL` e
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Instale as dependências e inicie o Vite:
 
-## Expanding the ESLint configuration
+```sh
+npm install
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+As imagens anexadas às tasks são convertidas para JPEG e reduzidas para no máximo 800 px no lado maior antes de serem salvas.
+
+## Autenticação por e-mail
+
+Habilite o provedor **Email** em **Authentication → Sign In / Providers** no Supabase.
+
+Se quiser permitir que novos usuários entrem imediatamente sem confirmar o endereço, desative **Confirm email** nas configurações do provedor. Nesse caso, o e-mail não é verificado.

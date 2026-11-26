@@ -1,35 +1,34 @@
 // ---------- Imports (sempre no topo, fora da função) ----------
 import { useState } from 'react';
-import { useLocalStorage } from './useLocalStorage';
+import { useCloudState } from './useCloudState';
 import { useTheme } from './useTheme';
 import TaskDialog from './TaskDialog';
 import SprintDialog from './SprintDialog';
+import ImageViewer from './ImageViewer';
 import Daily from './Daily';
 import Today from './Today';
 import { KEY, COLS, PRIO, TABS, seed, today, br, withDone } from './utils';
 
-export default function App() {
-  // Estado global (sprints, tasks, dailies, log), salvo automaticamente no localStorage.
-  // O 3º argumento confere se o dado salvo tem o formato certo; se não tiver, usa o seed.
-  const [S, setS] = useLocalStorage(
-    KEY,
-    seed,
-    d => Array.isArray(d.sprints) && Array.isArray(d.tasks) && d.dailies && typeof d.dailies === 'object'
-  );
-  const [theme, toggleTheme] = useTheme();         // tema atual + função para alternar
-  const [taskDlg, setTaskDlg] = useState(null);     // null = fechado | {} = nova | task = editar
-  const [sprintDlg, setSprintDlg] = useState(false); // modal de nova sprint
-  const [overCol, setOverCol] = useState(null);     // coluna destacada durante o drag
+// ---------- App principal (recebe os dados já carregados da nuvem) ----------
+function Sprintbook({ S, setS, status, user, onLogout }) {
+  const [theme, toggleTheme] = useTheme();           // tema atual + função para alternar
+  const [taskDlg, setTaskDlg] = useState(null);       // null = fechado | {} = nova | task = editar
+  const [sprintDlg, setSprintDlg] = useState(false);  // modal de nova sprint
+  const [overCol, setOverCol] = useState(null);       // coluna destacada durante o drag
+  const [viewer, setViewer] = useState(null);         // null = fechado | { src, title } = imagem em tela cheia
 
   // Sprint selecionada e as tasks dela
   const sprint = S.sprints.find(s => s.id === S.cur);
   const tasks = S.tasks.filter(t => t.sprint === S.cur);
 
+  // Controle global das imagens. Se nunca foi mexido (undefined), conta como "mostrar"
+  const showImages = S.showImages !== false;
+
   // ---------- Ações ----------
 
   // Move a task para outra coluna (e ajusta a data de conclusão)
-  const moveTask = (id, status) =>
-    setS(p => ({ ...p, tasks: p.tasks.map(t => (t.id === id ? withDone({ ...t, status }) : t)) }));
+  const moveTask = (id, st) =>
+    setS(p => ({ ...p, tasks: p.tasks.map(t => (t.id === id ? withDone({ ...t, status: st }) : t)) }));
 
   // Cria ou atualiza uma task
   const saveTask = task => {
@@ -48,6 +47,10 @@ export default function App() {
     setS(p => ({ ...p, tasks: p.tasks.filter(t => t.id !== id) }));
     setTaskDlg(null);
   };
+
+  // Olho: esconde/mostra a imagem de UMA task (fica salvo em t.hideImg)
+  const toggleImg = id =>
+    setS(p => ({ ...p, tasks: p.tasks.map(t => (t.id === id ? { ...t, hideImg: !t.hideImg } : t)) }));
 
   // Leva uma task do backlog para a sprint atual
   const pullToSprint = id =>
@@ -97,37 +100,62 @@ export default function App() {
 
   // ---------- View: Board (colunas com cards arrastáveis) ----------
   const board = (
-    <div className="board">
-      {COLS.map(([k, label]) => {
-        const col = tasks.filter(t => t.status === k);
-        return (
-          <div key={k} className={`col${overCol === k ? ' over' : ''}`}
-            onDragOver={e => { e.preventDefault(); setOverCol(k); }}
-            onDragLeave={() => setOverCol(null)}
-            onDrop={e => { e.preventDefault(); setOverCol(null); moveTask(e.dataTransfer.getData('text/plain'), k); }}>
-            <h3>{label}<span>{col.length}</span></h3>
-            {col.length === 0 && <div className="empty">Arraste uma task para cá</div>}
-            {col.map(t => {
-              const i = COLS.findIndex(c => c[0] === t.status); // posição da coluna atual
-              return (
-                <div key={t.id} className={`card p-${t.prio}`} draggable
-                  onDragStart={e => e.dataTransfer.setData('text/plain', t.id)}>
-                  <div className="t" onClick={() => setTaskDlg(t)}>{t.title}</div>
-                  <div className="m">
-                    <span>{t.tag && <span className="chip">{t.tag}</span>} {t.pts} pt{t.pts > 1 ? 's' : ''} · {PRIO[t.prio]}</span>
-                    <span className="row" style={{ gap: 4 }}>
-                      {/* Botões ‹ › para mover sem arrastar (úteis no celular) */}
-                      <button className="mv" disabled={i === 0} aria-label="Coluna anterior" onClick={() => moveTask(t.id, COLS[i - 1][0])}>‹</button>
-                      <button className="mv" disabled={i === COLS.length - 1} aria-label="Próxima coluna" onClick={() => moveTask(t.id, COLS[i + 1][0])}>›</button>
-                    </span>
+    <>
+      {/* Interruptor global: só aparece se alguma task da sprint tiver imagem */}
+      {tasks.some(t => t.image) && (
+        <label className="muted" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13.5 }}>
+          <input type="checkbox" style={{ width: 'auto' }} checked={showImages}
+            onChange={e => setS(p => ({ ...p, showImages: e.target.checked }))} />
+          Mostrar imagens nos cards
+        </label>
+      )}
+      <div className="board">
+        {COLS.map(([k, label]) => {
+          const col = tasks.filter(t => t.status === k);
+          return (
+            <div key={k} className={`col${overCol === k ? ' over' : ''}`}
+              onDragOver={e => { e.preventDefault(); setOverCol(k); }}
+              onDragLeave={() => setOverCol(null)}
+              onDrop={e => { e.preventDefault(); setOverCol(null); moveTask(e.dataTransfer.getData('text/plain'), k); }}>
+              <h3>{label}<span>{col.length}</span></h3>
+              {col.length === 0 && <div className="empty">Arraste uma task para cá</div>}
+              {col.map(t => {
+                const i = COLS.findIndex(c => c[0] === t.status); // posição da coluna atual
+                const imgVisible = t.image && !t.hideImg && showImages; // imagem aparece neste card?
+                return (
+                  <div key={t.id} className={`card p-${t.prio}`} draggable
+                    onDragStart={e => e.dataTransfer.setData('text/plain', t.id)}>
+                    <div className="t" onClick={() => setTaskDlg(t)}>{t.title}</div>
+
+                    {/* Miniatura: clicar abre em tela cheia. draggable={false} deixa o card arrastável */}
+                    {imgVisible && (
+                      <img className="thumb" src={t.image} alt={`Anexo de ${t.title}`} draggable={false}
+                        onClick={() => setViewer({ src: t.image, title: t.title })} />
+                    )}
+
+                    <div className="m">
+                      <span>{t.tag && <span className="chip">{t.tag}</span>} {t.pts} pt{t.pts > 1 ? 's' : ''} · {PRIO[t.prio]}</span>
+                      <span className="row" style={{ gap: 4 }}>
+                        {/* Só cards com anexo têm o olho */}
+                        {t.image && (
+                          <button type="button" className="mv" aria-label={t.hideImg ? 'Mostrar imagem' : 'Esconder imagem'}
+                            title={t.hideImg ? 'Mostrar imagem' : 'Esconder imagem'} onClick={() => toggleImg(t.id)}>
+                            {t.hideImg ? '🙈' : '👁'}
+                          </button>
+                        )}
+                        {/* Botões ‹ › para mover sem arrastar (úteis no celular) */}
+                        <button className="mv" disabled={i === 0} aria-label="Coluna anterior" onClick={() => moveTask(t.id, COLS[i - 1][0])}>‹</button>
+                        <button className="mv" disabled={i === COLS.length - 1} aria-label="Próxima coluna" onClick={() => moveTask(t.id, COLS[i + 1][0])}>›</button>
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 
   // ---------- View: Backlog (tasks sem sprint) ----------
@@ -141,7 +169,7 @@ export default function App() {
           <div className="item" key={t.id}>
             <div>
               <div className="t" onClick={() => setTaskDlg(t)}>{t.title}</div>
-              <div className="muted" style={{ fontSize: 13 }}>{t.tag && `${t.tag} · `}{t.pts} pts · prioridade {PRIO[t.prio].toLowerCase()}</div>
+              <div className="muted" style={{ fontSize: 13 }}>{t.tag && `${t.tag} · `}{t.pts} pts · prioridade {PRIO[t.prio].toLowerCase()}{t.image && ' · 📎'}</div>
             </div>
             {/* Só mostra o botão se existir uma sprint aberta */}
             {sprint && !sprint.closed && <button className="btn" onClick={() => pullToSprint(t.id)}>Levar para {sprint.name}</button>}
@@ -193,6 +221,11 @@ export default function App() {
             onChange={e => setS(p => ({ ...p, cur: e.target.value }))}>
             {S.sprints.map(s => <option key={s.id} value={s.id}>{s.name}{s.closed ? ' (encerrada)' : ''}</option>)}
           </select>
+          {/* Estado do salvamento na nuvem (passe o mouse para ver o e-mail da conta) */}
+          <span className="muted" style={{ fontSize: 13 }} title={user.email}>
+            {status === 'saving' ? 'Salvando…' : status === 'error' ? '⚠️ Erro ao salvar' : '☁️ Salvo'}
+          </span>
+          <button className="btn" onClick={onLogout}>Sair</button>
           {/* Alterna entre tema claro e escuro */}
           <button className="btn" onClick={toggleTheme} aria-label="Alternar tema">
             {theme === 'dark' ? '☀️ Claro' : '🌙 Escuro'}
@@ -245,6 +278,35 @@ export default function App() {
       {sprintDlg && (
         <SprintDialog nextNumber={S.sprints.length + 1} onSave={saveSprint} onClose={() => setSprintDlg(false)} />
       )}
+      {/* Imagem em tela cheia */}
+      {viewer && <ImageViewer src={viewer.src} title={viewer.title} onClose={() => setViewer(null)} />}
     </div>
   );
+}
+
+// ---------- Wrapper: carrega os dados da nuvem antes de mostrar o app ----------
+// Confere se o dado salvo tem o formato esperado
+const isValid = d => Array.isArray(d.sprints) && Array.isArray(d.tasks) && d.dailies && typeof d.dailies === 'object';
+
+export default function App({ user, onLogout }) {
+  // Carrega do Supabase; na 1ª vez aproveita o que estava no localStorage (chave KEY) ou usa o seed
+  const [S, setS, status] = useCloudState(user.id, KEY, seed, isValid);
+
+  // Ainda sem dados: carregando, ou falhou (nesse caso nada é sobrescrito)
+  if (!S) {
+    return (
+      <div className="wrap">
+        {status === 'error' ? (
+          <div className="panel">
+            Não consegui carregar seus dados. Nada foi alterado.
+            <div style={{ marginTop: 12 }}>
+              <button className="btn pri" onClick={() => window.location.reload()}>Tentar de novo</button>
+            </div>
+          </div>
+        ) : <div className="empty">Carregando…</div>}
+      </div>
+    );
+  }
+
+  return <Sprintbook S={S} setS={setS} status={status} user={user} onLogout={onLogout} />;
 }

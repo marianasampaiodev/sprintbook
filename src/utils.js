@@ -40,3 +40,48 @@ export function seed() {
     ],
   };
 }
+
+export function resizeImage(file, max = 800) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error('Não foi possível ler o arquivo.'));
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Não foi possível ler o arquivo como imagem.'));
+        return;
+      }
+
+      const img = new Image();
+      img.onerror = () => reject(new Error('O arquivo selecionado não é uma imagem válida.'));
+      img.onload = () => {
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+        if (!width || !height) {
+          reject(new Error('A imagem não possui dimensões válidas.'));
+          return;
+        }
+
+        const scale = Math.min(1, max / Math.max(width, height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Não foi possível processar a imagem neste navegador.'));
+          return;
+        }
+
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        try {
+          resolve(canvas.toDataURL('image/jpeg', 0.75));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
