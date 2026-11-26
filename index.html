@@ -41,6 +41,9 @@ header.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-
 .card.p-alta{border-left-color:var(--bad)}.card.p-media{border-left-color:var(--warn)}.card.p-baixa{border-left-color:var(--ok)}
 .card .t{font-weight:500;cursor:pointer;word-break:break-word}
 .card .m{display:flex;justify-content:space-between;align-items:center;margin-top:8px;color:var(--muted);font-size:12.5px;gap:6px}
+.thumbs{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.thumb{width:48px;height:48px;padding:0;border:1px solid var(--line);border-radius:6px;background:none;overflow:hidden}
+.thumb img{display:block;width:100%;height:100%;object-fit:cover}
 .chip{background:var(--col);border-radius:20px;padding:1px 9px;font-size:12px;color:var(--muted)}
 .mv{border:1px solid var(--line);background:none;border-radius:6px;width:26px;height:24px;padding:0;line-height:1}
 .empty{color:var(--muted);padding:18px 6px;text-align:center;font-size:14px}
@@ -75,6 +78,7 @@ dialog{max-height:90vh;overflow:auto}
     <h1 class="brand">Sprintbook</h1>
     <div class="row">
       <button class="btn" id="themeBtn" type="button"></button>
+      <span class="muted" id="saveStatus" role="status" aria-live="polite"></span>
       <select id="sprintSel" aria-label="Sprint atual" style="width:auto"></select>
       <button class="btn" id="newSprint">Nova sprint</button>
       <button class="btn pri" id="newTask">Nova task</button>
@@ -129,6 +133,8 @@ const today=()=>fmt(new Date());
 const br=s=>s?s.split('-').reverse().join('/'):'';
 const uid=()=>Math.random().toString(36).slice(2,9);
 const KEY='sprintbook:v1';
+const DB_NAME='sprintbook';
+const STORE_NAME='state';
 const COLS=[['todo','A fazer'],['doing','Em andamento'],['review','Em review'],['done','Feito']];
 const PRIO={alta:'Alta',media:'Média',baixa:'Baixa'};
 const TABS=[['board','Board'],['backlog','Backlog'],['daily','Daily'],['hist','Histórico']];
@@ -145,11 +151,90 @@ function seed(){
     mk('Pesquisar biblioteca de gráficos','todo','baixa',2,'spike','')
   ],dailies:{},dDate:t};
 }
-let S;
-try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}
-if(!S||!S.sprints)S=seed();
-S.dDate=today();
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+let S=seed(),db=null,persistenceReady=false,saveVersion=0;
+const saveStatus=$('#saveStatus');
+function showSaveStatus(message,error=false){
+  saveStatus.textContent=message;
+  saveStatus.style.color=error?'var(--bad)':'';
+}
+function openDb(){
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open(DB_NAME,1);
+    request.onupgradeneeded=()=>request.result.createObjectStore(STORE_NAME);
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error('Falha ao abrir o armazenamento local.'));
+    request.onblocked=()=>reject(new Error('O armazenamento está bloqueado por outra aba.'));
+  });
+}
+function readStoredState(){
+  return new Promise((resolve,reject)=>{
+    const transaction=db.transaction(STORE_NAME,'readonly');
+    const request=transaction.objectStore(STORE_NAME).get('app');
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error('Falha ao ler os dados salvos.'));
+    transaction.onabort=()=>reject(transaction.error||new Error('Leitura dos dados interrompida.'));
+  });
+}
+function writeStoredState(state){
+  return new Promise((resolve,reject)=>{
+    const transaction=db.transaction(STORE_NAME,'readwrite');
+    transaction.objectStore(STORE_NAME).put(state,'app');
+    transaction.oncomplete=resolve;
+    transaction.onerror=()=>reject(transaction.error||new Error('Falha ao salvar os dados.'));
+    transaction.onabort=()=>reject(transaction.error||new Error('Gravação dos dados interrompida.'));
+  });
+}
+function isValidState(state){
+  return !!state&&Array.isArray(state.sprints)&&Array.isArray(state.tasks)&&
+    !!state.dailies&&typeof state.dailies==='object';
+}
+function readLegacyState(){
+  let raw;
+  try{raw=localStorage.getItem(KEY)}catch(e){throw new Error(`Não foi possível acessar os dados antigos: ${e.message}`)}
+  if(!raw)return null;
+  let state;
+  try{state=JSON.parse(raw)}catch(e){throw new Error(`Os dados antigos estão inválidos: ${e.message}`)}
+  if(!isValidState(state))throw new Error('Os dados antigos têm um formato inesperado e não foram substituídos.');
+  return state;
+}
+async function initialize(){
+  showSaveStatus('Carregando dados...');
+  try{
+    db=await openDb();
+    const stored=await readStoredState();
+    if(stored!==undefined){
+      if(!isValidState(stored))throw new Error('Os dados salvos têm um formato inesperado e não foram substituídos.');
+      S=stored;
+    }else{
+      S=readLegacyState()||seed();
+      await writeStoredState(S);
+    }
+    S.dDate=today();
+    persistenceReady=true;
+    render();
+  }catch(e){
+    console.error('Não foi possível inicializar o armazenamento do Sprintbook.',e);
+    showSaveStatus(`Erro ao carregar dados: ${e.message}`,true);
+    $('#view').textContent='Não foi possível carregar seus dados. Atualize a página para tentar novamente.';
+  }
+}
+const save=()=>{
+  if(!persistenceReady)return;
+  const version=++saveVersion;
+  showSaveStatus('Salvando...');
+  try{
+    const snapshot=JSON.parse(JSON.stringify(S));
+    writeStoredState(snapshot).then(()=>{
+      if(version===saveVersion)showSaveStatus('Salvo');
+    }).catch(e=>{
+      console.error('Não foi possível salvar os dados do Sprintbook.',e);
+      if(version===saveVersion)showSaveStatus(`Erro ao salvar: ${e.message}`,true);
+    });
+  }catch(e){
+    console.error('Não foi possível preparar os dados do Sprintbook para salvar.',e);
+    if(version===saveVersion)showSaveStatus(`Erro ao salvar: ${e.message}`,true);
+  }
+};
 const sprint=id=>S.sprints.find(x=>x.id===id);
 const curTasks=()=>S.tasks.filter(t=>t.sprint===S.cur);
 
@@ -169,12 +254,17 @@ function renderHead(){
   <div class="meta"><span><b>${done}</b> de ${tot} pontos (${pct}%)</span><span>${ts.filter(t=>t.status==='done').length}/${ts.length} tasks</span><span>${br(sp.start)} a ${br(sp.end)}</span><span>${dayTxt}</span></div>`;
   const c=$('#closeSprint');if(c)c.onclick=closeSprint;
 }
+function taskImages(t){
+  const images=(t.atts||[]).map((att,index)=>({att,index})).filter(({att})=>(att.type||'').startsWith('image/'));
+  if(!images.length)return '';
+  return `<div class="thumbs">${images.map(({att,index})=>`<button class="thumb" type="button" data-preview-task="${t.id}" data-preview-index="${index}" aria-label="Ver imagem ${esc(att.name)}"><img src="${esc(att.url)}" alt="${esc(att.name)}" loading="lazy"></button>`).join('')}</div>`;
+}
 function renderTabs(){
   $('#tabs').innerHTML=TABS.map(([k,l])=>`<button class="tab" role="tab" aria-selected="${S.view===k}" data-v="${k}">${l}</button>`).join('');
 }
 function card(t){
   return `<div class="card p-${t.prio}" draggable="true" data-id="${t.id}">
-  <div class="t" data-edit="${t.id}">${esc(t.title)}</div>
+  <div class="t" data-edit="${t.id}">${esc(t.title)}</div>${taskImages(t)}
   <div class="m"><span>${t.tag?`<span class="chip">${esc(t.tag)}</span> `:''}${t.pts} pt${t.pts>1?'s':''} · ${PRIO[t.prio]}${(t.atts||[]).length?` · 📎 ${t.atts.length}`:''}</span>
   <span class="row" style="gap:4px"><button class="mv" data-mv="-1" data-id="${t.id}" aria-label="Mover para a coluna anterior">‹</button><button class="mv" data-mv="1" data-id="${t.id}" aria-label="Mover para a próxima coluna">›</button></span></div></div>`;
 }
@@ -188,7 +278,7 @@ function vBacklog(){
   const b=S.tasks.filter(t=>!t.sprint);
   const cur=sprint(S.cur);
   return `<div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="font-size:20px">Backlog (${b.length})</h2></div>
-  <div class="list">${b.map(t=>`<div class="item"><div><div class="t" data-edit="${t.id}">${esc(t.title)}</div><div class="muted" style="font-size:13px">${t.tag?esc(t.tag)+' · ':''}${t.pts} pts · prioridade ${PRIO[t.prio].toLowerCase()}</div></div>
+  <div class="list">${b.map(t=>`<div class="item"><div><div class="t" data-edit="${t.id}">${esc(t.title)}</div><div class="muted" style="font-size:13px">${t.tag?esc(t.tag)+' · ':''}${t.pts} pts · prioridade ${PRIO[t.prio].toLowerCase()}</div>${taskImages(t)}</div>
   ${cur&&!cur.closed?`<button class="btn" data-pull="${t.id}">Levar para ${esc(cur.name)}</button>`:''}</div>`).join('')||'<div class="empty">Backlog vazio. Novas ideias e demandas sem sprint aparecem aqui.</div>'}</div>`;
 }
 function vDaily(){
@@ -230,8 +320,12 @@ function bindView(){
   document.querySelectorAll('textarea[data-f]').forEach(a=>a.oninput=()=>{(S.dailies[S.dDate]=S.dailies[S.dDate]||{})[a.dataset.f]=a.value;save()});
 }
 document.addEventListener('click',e=>{
-  const g=e.target.closest('[data-v],[data-edit],[data-mv],[data-pull],[data-ins]');if(!g)return;
-  if(g.dataset.v){S.view=g.dataset.v;render()}
+  const g=e.target.closest('[data-v],[data-edit],[data-mv],[data-pull],[data-ins],[data-preview-task]');if(!g)return;
+  if(g.dataset.previewTask){
+    const task=S.tasks.find(t=>t.id===g.dataset.previewTask),att=task?.atts?.[+g.dataset.previewIndex];
+    if(att){$('#bigImg').src=att.url;$('#bigImg').alt=att.name;$('#dImg').showModal()}
+  }
+  else if(g.dataset.v){S.view=g.dataset.v;render()}
   else if(g.dataset.edit)openTask(g.dataset.edit);
   else if(g.dataset.mv){const t=S.tasks.find(x=>x.id===g.dataset.id),i=COLS.findIndex(c=>c[0]===t.status)+ +g.dataset.mv;if(i>=0&&i<COLS.length){setStatus(t,COLS[i][0]);render()}}
   else if(g.dataset.pull){const t=S.tasks.find(x=>x.id===g.dataset.pull);t.sprint=S.cur;t.status='todo';render()}
@@ -326,7 +420,7 @@ function paintTheme(){const b=$('#themeBtn');b.textContent=isDark()?'🌙 Escuro
 $('#themeBtn').onclick=()=>{const n=isDark()?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('sprintbook:theme',n)}catch(e){}paintTheme()};
 mq.addEventListener('change',paintTheme);
 paintTheme();
-render();
+initialize();
 </script>
 </body>
 </html>
