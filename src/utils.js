@@ -16,6 +16,7 @@ export const uid = () => Math.random().toString(36).slice(2, 9);
 export const KEY = 'sprintbook:v1'; // chave do localStorage
 export const COLS = [['todo', 'A fazer'], ['doing', 'Em andamento'], ['review', 'Em review'], ['done', 'Feito']];
 export const PRIO = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+export const TAGS = { bug: 'Bug', backlog: 'Backlog' };
 export const TABS = [['board', 'Board'], ['backlog', 'Backlog'], ['daily', 'Daily'], ['today', 'Hoje'], ['hist', 'Histórico']];
 // Garante que done_at só existe quando a task está em "Feito"
 export const withDone = t => ({ ...t, done_at: t.status === 'done' ? t.done_at || today() : null });
@@ -24,19 +25,20 @@ export const withDone = t => ({ ...t, done_at: t.status === 'done' ? t.done_at |
 export function seed() {
   const t = today();
   const sprint = { id: 's1', name: 'Sprint 1', goal: 'Entregar o fluxo de login e o painel inicial', start: addDays(t, -4), end: addDays(t, 9), closed: false };
-  const mk = (title, status, prio, pts, tag, sp = 's1') => ({
-    id: uid(), title, desc: '', status, prio, pts, tag, sprint: sp,
-    created: addDays(t, -4), done_at: status === 'done' ? addDays(t, -1) : null,
+  const mk = (title, status, prio, tag, sp = 's1') => ({
+    id: uid(), title, desc: '', status, prio, tag, sprint: sp,
+    start_date: addDays(t, -4), created: addDays(t, -4),
+    done_at: status === 'done' ? addDays(t, -1) : null,
   });
   return {
     sprints: [sprint], cur: 's1', view: 'board', dailies: {},
     tasks: [
-      mk('Configurar pipeline de CI', 'done', 'media', 3, 'devops'),
-      mk('Tela de login com validação', 'doing', 'alta', 5, 'frontend'),
-      mk('Endpoint de recuperação de senha', 'todo', 'alta', 5, 'backend'),
-      mk('Revisar PR do módulo de relatórios', 'review', 'media', 2, 'review'),
-      mk('Corrigir bug no filtro de datas', 'todo', 'baixa', 1, 'bug'),
-      mk('Pesquisar biblioteca de gráficos', 'todo', 'baixa', 2, 'spike', ''), // sem sprint = backlog
+      mk('Configurar pipeline de CI', 'done', 'media', 'devops'),
+      mk('Tela de login com validação', 'doing', 'alta', 'frontend'),
+      mk('Endpoint de recuperação de senha', 'todo', 'alta', 'backend'),
+      mk('Revisar PR do módulo de relatórios', 'review', 'media', 'review'),
+      mk('Corrigir bug no filtro de datas', 'todo', 'baixa', 'bug'),
+      mk('Pesquisar biblioteca de gráficos', 'todo', 'baixa', 'spike', ''), // sem sprint = backlog
     ],
   };
 }

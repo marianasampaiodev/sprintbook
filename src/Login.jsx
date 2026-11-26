@@ -28,32 +28,60 @@ export default function Login() {
   };
 
   return (
-    <div className="wrap" style={{ maxWidth: 420, paddingTop: 60 }}>
-      <h1 className="brand" style={{ marginBottom: 16 }}>Sprintbook</h1>
-      <form className="panel" onSubmit={submit}>
-        <h3>{mode === 'login' ? 'Entrar' : 'Criar conta'}</h3>
-        <label>E-mail</label>
-        <input type="email" required value={email} onChange={e => setEmail(e.target.value)} />
-        <label>Senha (mínimo 6 caracteres)</label>
-        <input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)} />
-        {msg && <div style={{ color: 'var(--bad)', fontSize: 14, marginTop: 10 }}>{msg}</div>}
-        <div className="row" style={{ marginTop: 16, justifyContent: 'space-between' }}>
+    <main className="auth-page">
+      <section className="auth-card">
+        <div className="auth-intro">
+          <div className="brand-lockup auth-brand">
+            <span className="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="m8 5-6 7 6 7M16 5l6 7-6 7" /></svg>
+            </span>
+            <span className="brand">Sprintbook</span>
+          </div>
+          <div className="auth-message-block">
+            <span className="auth-kicker">PLANEJE COM LEVEZA</span>
+            <h1>Um passo de cada vez.<br /><span>Uma sprint por vez.</span></h1>
+            <p>Organize suas tarefas, acompanhe o progresso e celebre cada entrega.</p>
+            <div className="auth-highlights">
+              <span><i aria-hidden="true">✓</i> Quadro visual por etapas</span>
+              <span><i aria-hidden="true">✓</i> Prioridades sempre claras</span>
+              <span><i aria-hidden="true">✓</i> Seu progresso em um só lugar</span>
+            </div>
+          </div>
+          <span className="auth-decoration auth-decoration-one" />
+          <span className="auth-decoration auth-decoration-two" />
+        </div>
+
+        <form className="auth-form" onSubmit={submit}>
+          <span className="eyebrow">{mode === 'login' ? 'BEM-VINDO AO SPRINTBOOK' : 'VAMOS COMEÇAR'}</span>
+          <h2>{mode === 'login' ? 'Entrar na sua conta' : 'Criar sua conta'}</h2>
+          <p className="auth-form-copy">
+            {mode === 'login' ? 'Acesse seu espaço de organização.' : 'Crie uma conta para começar a planejar.'}
+          </p>
+          <label htmlFor="login-email">E-mail</label>
+          <input id="login-email" type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} />
+          <label htmlFor="login-password">Senha</label>
+          <input id="login-password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            required minLength={6} value={password} onChange={e => setPassword(e.target.value)}
+            placeholder="Mínimo de 6 caracteres" />
+          {msg && <div className="auth-alert" role="status">{msg}</div>}
+          <button className="btn pri auth-submit" disabled={busy}>
+            {busy ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+            {!busy && <span aria-hidden="true">→</span>}
+          </button>
           <button
             type="button"
-            className="btn"
+            className="auth-switch"
             disabled={busy}
             onClick={() => {
               setMode(mode === 'login' ? 'signup' : 'login');
               setMsg('');
             }}
           >
-            {mode === 'login' ? 'Criar conta' : 'Já tenho conta'}
+            {mode === 'login' ? 'Ainda não tem uma conta? Criar conta' : 'Já tem uma conta? Entrar'}
           </button>
-          <button className="btn pri" disabled={busy}>
-            {busy ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Criar'}
-          </button>
-        </div>
-      </form>
-    </div>
+          <p className="auth-footnote">Seu espaço de trabalho, sempre sincronizado.</p>
+        </form>
+      </section>
+    </main>
   );
 }

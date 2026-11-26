@@ -5,9 +5,10 @@ import { useTheme } from './useTheme';
 import TaskDialog from './TaskDialog';
 import SprintDialog from './SprintDialog';
 import ImageViewer from './ImageViewer';
+import { PriorityFlag, TagBadge, TaskDate } from './TaskBadges';
 import Daily from './Daily';
 import Today from './Today';
-import { KEY, COLS, PRIO, TABS, seed, today, br, withDone } from './utils';
+import { KEY, COLS, TABS, seed, today, br, withDone } from './utils';
 
 // ---------- App principal (recebe os dados já carregados da nuvem) ----------
 function Sprintbook({ S, setS, status, user, onLogout }) {
@@ -87,10 +88,12 @@ function Sprintbook({ S, setS, status, user, onLogout }) {
     setS(p => ({ ...p, log: { ...(p.log || {}), [date]: ((p.log || {})[date] || []).filter(e => e.id !== id) } }));
 
   // ---------- Barra da sprint (progresso) ----------
-  // Soma os pontos das tasks por status ('all' = todas)
-  const pts = st => tasks.filter(t => st === 'all' || t.status === st).reduce((a, t) => a + t.pts, 0);
-  const total = pts('all');
-  const done = pts('done');
+  // Progresso da sprint baseado na quantidade de tasks por status
+  const count = st => tasks.filter(t => t.status === st).length;
+  const total = tasks.length;
+  const done = count('done');
+  const review = count('review');
+  const doing = count('doing');
   const pct = total ? Math.round((done / total) * 100) : 0;
   // Dias restantes até o fim da sprint
   const left = sprint ? Math.ceil((new Date(sprint.end + 'T12:00:00') - new Date(today() + 'T12:00:00')) / 864e5) : 0;
@@ -101,9 +104,17 @@ function Sprintbook({ S, setS, status, user, onLogout }) {
   // ---------- View: Board (colunas com cards arrastáveis) ----------
   const board = (
     <>
+      <div className="section-heading board-heading">
+        <div>
+          <span className="eyebrow">ACOMPANHAMENTO</span>
+          <h2>Quadro da sprint</h2>
+          <p>Arraste as tasks entre as etapas ou abra um card para editar.</p>
+        </div>
+        <span className="count-pill">{tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}</span>
+      </div>
       {/* Interruptor global: só aparece se alguma task da sprint tiver imagem */}
       {tasks.some(t => t.image) && (
-        <label className="muted" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13.5 }}>
+        <label className="image-toggle">
           <input type="checkbox" style={{ width: 'auto' }} checked={showImages}
             onChange={e => setS(p => ({ ...p, showImages: e.target.checked }))} />
           Mostrar imagens nos cards
@@ -113,11 +124,11 @@ function Sprintbook({ S, setS, status, user, onLogout }) {
         {COLS.map(([k, label]) => {
           const col = tasks.filter(t => t.status === k);
           return (
-            <div key={k} className={`col${overCol === k ? ' over' : ''}`}
+            <div key={k} className={`col${overCol === k ? ' over' : ''}`} data-status={k}
               onDragOver={e => { e.preventDefault(); setOverCol(k); }}
               onDragLeave={() => setOverCol(null)}
               onDrop={e => { e.preventDefault(); setOverCol(null); moveTask(e.dataTransfer.getData('text/plain'), k); }}>
-              <h3>{label}<span>{col.length}</span></h3>
+              <h3 className="column-heading"><span className="status-dot" />{label}<span className="column-count">{col.length}</span></h3>
               {col.length === 0 && <div className="empty">Arraste uma task para cá</div>}
               {col.map(t => {
                 const i = COLS.findIndex(c => c[0] === t.status); // posição da coluna atual
@@ -125,7 +136,7 @@ function Sprintbook({ S, setS, status, user, onLogout }) {
                 return (
                   <div key={t.id} className={`card p-${t.prio}`} draggable
                     onDragStart={e => e.dataTransfer.setData('text/plain', t.id)}>
-                    <div className="t" onClick={() => setTaskDlg(t)}>{t.title}</div>
+                    <button type="button" className="card-title" onClick={() => setTaskDlg(t)}>{t.title}</button>
 
                     {/* Miniatura: clicar abre em tela cheia. draggable={false} deixa o card arrastável */}
                     {imgVisible && (
@@ -134,7 +145,11 @@ function Sprintbook({ S, setS, status, user, onLogout }) {
                     )}
 
                     <div className="m">
-                      <span>{t.tag && <span className="chip">{t.tag}</span>} {t.pts} pt{t.pts > 1 ? 's' : ''} · {PRIO[t.prio]}</span>
+                      <span className="task-meta">
+                        {t.tag && <TagBadge tag={t.tag} />}
+                        <TaskDate date={t.start_date} />
+                        <PriorityFlag priority={t.prio} />
+                      </span>
                       <span className="row" style={{ gap: 4 }}>
                         {/* Só cards com anexo têm o olho */}
                         {t.image && (
@@ -162,14 +177,25 @@ function Sprintbook({ S, setS, status, user, onLogout }) {
   const backlogItems = S.tasks.filter(t => !t.sprint);
   const backlog = (
     <>
-      <h2 style={{ fontSize: 20, marginBottom: 10 }}>Backlog ({backlogItems.length})</h2>
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">IDEIAS E PRÓXIMOS PASSOS</span>
+          <h2>Backlog</h2>
+          <p>Tasks sem sprint ficam guardadas aqui até você priorizá-las.</p>
+        </div>
+        <span className="count-pill">{backlogItems.length} {backlogItems.length === 1 ? 'task' : 'tasks'}</span>
+      </div>
       <div className="list">
         {backlogItems.length === 0 && <div className="empty">Backlog vazio. Novas ideias e demandas sem sprint aparecem aqui.</div>}
         {backlogItems.map(t => (
           <div className="item" key={t.id}>
             <div>
-              <div className="t" onClick={() => setTaskDlg(t)}>{t.title}</div>
-              <div className="muted" style={{ fontSize: 13 }}>{t.tag && `${t.tag} · `}{t.pts} pts · prioridade {PRIO[t.prio].toLowerCase()}{t.image && ' · 📎'}</div>
+              <button type="button" className="list-task-title" onClick={() => setTaskDlg(t)}>{t.title}</button>
+              <div className="muted task-list-meta">
+                {t.tag && <TagBadge tag={t.tag} />}
+                <TaskDate date={t.start_date} />
+                <PriorityFlag priority={t.prio} />{t.image && ' · 📎'}
+              </div>
             </div>
             {/* Só mostra o botão se existir uma sprint aberta */}
             {sprint && !sprint.closed && <button className="btn" onClick={() => pullToSprint(t.id)}>Levar para {sprint.name}</button>}
@@ -185,21 +211,36 @@ function Sprintbook({ S, setS, status, user, onLogout }) {
     .map(s => ({ name: s.name, t: doneTasks.filter(t => t.sprint === s.id) }))
     .concat([{ name: 'Sem sprint', t: doneTasks.filter(t => !t.sprint || !S.sprints.some(s => s.id === t.sprint)) }])
     .filter(g => g.t.length); // esconde grupos vazios
-  const hist = groups.length === 0
-    ? <div className="empty">Nada concluído ainda. Tasks marcadas como Feito aparecem aqui.</div>
-    : groups.map(g => (
-      <div key={g.name} style={{ marginBottom: 22 }}>
-        <h3 className="h-sprint">{g.name} <span className="muted" style={{ fontSize: 14, fontWeight: 500 }}>{g.t.length} tasks · {g.t.reduce((a, t) => a + t.pts, 0)} pts</span></h3>
-        <div className="list">
-          {[...g.t].sort((a, b) => (b.done_at || '').localeCompare(a.done_at || '')).map(t => (
-            <div className="item" key={t.id}>
-              <span className="t" onClick={() => setTaskDlg(t)}>{t.title}</span>
-              <span className="muted" style={{ fontSize: 13 }}>{t.tag && `${t.tag} · `}{t.pts} pts · feito em {br(t.done_at) || '—'}</span>
-            </div>
-          ))}
+  const hist = (
+    <>
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">CONCLUÍDAS</span>
+          <h2>Histórico</h2>
+          <p>Revise o que já foi entregue em cada sprint.</p>
         </div>
       </div>
-    ));
+      {groups.length === 0
+        ? <div className="empty">Nada concluído ainda. Tasks marcadas como Feito aparecem aqui.</div>
+        : groups.map(g => (
+          <div key={g.name} className="history-group">
+            <h3 className="h-sprint">{g.name} <span className="muted">{g.t.length} tasks</span></h3>
+            <div className="list">
+              {[...g.t].sort((a, b) => (b.done_at || '').localeCompare(a.done_at || '')).map(t => (
+                <div className="item" key={t.id}>
+                  <button type="button" className="list-task-title" onClick={() => setTaskDlg(t)}>{t.title}</button>
+                  <span className="muted task-list-meta">
+                    {t.tag && <TagBadge tag={t.tag} />}
+                    <TaskDate date={t.start_date} />
+                    <PriorityFlag priority={t.prio} /> · feito em {br(t.done_at) || '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+    </>
+  );
 
   // Mapa: nome da aba -> conteúdo (as chaves vêm de TABS no utils.js)
   const views = {
@@ -214,46 +255,73 @@ function Sprintbook({ S, setS, status, user, onLogout }) {
   return (
     <div className="wrap">
       <header className="top">
-        <h1 className="brand">Sprintbook</h1>
-        <div className="row">
-          {/* Seletor de sprint */}
-          <select aria-label="Sprint atual" style={{ width: 'auto' }} value={S.cur}
-            onChange={e => setS(p => ({ ...p, cur: e.target.value }))}>
-            {S.sprints.map(s => <option key={s.id} value={s.id}>{s.name}{s.closed ? ' (encerrada)' : ''}</option>)}
-          </select>
+        <div className="brand-lockup">
+          <span className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m8 5-6 7 6 7M16 5l6 7-6 7" /></svg>
+          </span>
+          <div>
+            <h1 className="brand">Sprintbook</h1>
+            <p className="brand-caption">Seu espaço de foco e entregas</p>
+          </div>
+        </div>
+        <div className="header-actions row">
+          <label className="sprint-picker">
+            <span>Sprint atual</span>
+            <select aria-label="Sprint atual" value={S.cur}
+              onChange={e => setS(p => ({ ...p, cur: e.target.value }))}>
+              {S.sprints.map(s => <option key={s.id} value={s.id}>{s.name}{s.closed ? ' (encerrada)' : ''}</option>)}
+            </select>
+          </label>
           {/* Estado do salvamento na nuvem (passe o mouse para ver o e-mail da conta) */}
-          <span className="muted" style={{ fontSize: 13 }} title={user.email}>
-            {status === 'saving' ? 'Salvando…' : status === 'error' ? '⚠️ Erro ao salvar' : '☁️ Salvo'}
+          <span className={`save-status save-${status}`} title={user.email}>
+            <span className="save-dot" />
+            {status === 'saving' ? 'Salvando…' : status === 'error' ? 'Erro ao salvar' : 'Salvo'}
           </span>
           <button className="btn" onClick={onLogout}>Sair</button>
           {/* Alterna entre tema claro e escuro */}
-          <button className="btn" onClick={toggleTheme} aria-label="Alternar tema">
+          <button className="btn theme-toggle" onClick={toggleTheme} aria-label="Alternar tema">
             {theme === 'dark' ? '☀️ Claro' : '🌙 Escuro'}
           </button>
-          <button className="btn" onClick={() => setSprintDlg(true)}>Nova sprint</button>
+          <button className="btn" onClick={() => setSprintDlg(true)}>+ Nova sprint</button>
           <button className="btn pri" onClick={() => setTaskDlg({})}>Nova task</button>
         </div>
       </header>
 
       {/* Resumo e progresso da sprint */}
       <section className="sprintbar">
-        {!sprint ? <div className="empty">Crie uma sprint para começar a organizar suas tasks.</div> : (
+        {!sprint ? (
+          <div className="empty-state">
+            <span className="empty-symbol" aria-hidden="true">✦</span>
+            <div>
+              <span className="eyebrow">TUDO COMEÇA COM UM PLANO</span>
+              <h2>Pronto para sua primeira sprint?</h2>
+              <p>Defina um objetivo, organize as tasks e acompanhe o progresso em um só lugar.</p>
+            </div>
+            <button className="btn pri" onClick={() => setSprintDlg(true)}>Criar primeira sprint</button>
+          </div>
+        ) : (
           <>
-            <div className="row" style={{ justifyContent: 'space-between' }}>
-              <div><h2 style={{ fontSize: 19 }}>{sprint.name}</h2><div className="muted">{sprint.goal || 'Sem objetivo definido'}</div></div>
+            <div className="sprint-overview">
+              <div className="sprint-copy">
+                <span className="eyebrow">SPRINT ATUAL</span>
+                <h2>{sprint.name}</h2>
+                <p>{sprint.goal || 'Sem objetivo definido'}</p>
+              </div>
               {!sprint.closed && <button className="btn" onClick={closeSprint}>Encerrar sprint</button>}
             </div>
-            {/* Barra: verde = feito, amarelo = review, azul = em andamento */}
-            <div className="bar" title={`${pct}% concluído`}>
-              <i style={{ width: `${total ? (pts('done') / total) * 100 : 0}%`, background: 'var(--ok)' }} />
-              <i style={{ width: `${total ? (pts('review') / total) * 100 : 0}%`, background: 'var(--warn)' }} />
-              <i style={{ width: `${total ? (pts('doing') / total) * 100 : 0}%`, background: 'var(--accent)' }} />
+            <div className="progress-heading">
+              <span>Progresso da sprint</span>
+              <strong>{pct}%</strong>
             </div>
-            <div className="meta">
-              <span><b>{done}</b> de {total} pontos ({pct}%)</span>
-              <span>{tasks.filter(t => t.status === 'done').length}/{tasks.length} tasks</span>
-              <span>{br(sprint.start)} a {br(sprint.end)}</span>
-              <span>{dayTxt}</span>
+            <div className="bar" role="progressbar" aria-label="Progresso da sprint" aria-valuenow={pct} aria-valuemin="0" aria-valuemax="100">
+              <i style={{ width: `${total ? (done / total) * 100 : 0}%`, background: 'var(--ok)' }} />
+              <i style={{ width: `${total ? (review / total) * 100 : 0}%`, background: 'var(--warn)' }} />
+              <i style={{ width: `${total ? (doing / total) * 100 : 0}%`, background: 'var(--accent)' }} />
+            </div>
+            <div className="sprint-stats">
+              <div><span>Tasks concluídas</span><strong>{done} / {total}</strong></div>
+              <div><span>Período</span><strong>{br(sprint.start)} — {br(sprint.end)}</strong></div>
+              <div><span>Tempo restante</span><strong>{dayTxt}</strong></div>
             </div>
           </>
         )}

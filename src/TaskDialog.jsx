@@ -1,15 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
-import { COLS, resizeImage, uid, today } from './utils';
+import { COLS, resizeImage, TAGS, uid, today } from './utils';
+import { PriorityFlag } from './TaskBadges';
 
 // Só é renderizado quando há uma task aberta (task = {} para nova)
 export default function TaskDialog({ task, sprints, defaultSprint, onSave, onDelete, onClose }) {
   const ref = useRef(null);
   const editing = !!task.id;
   const [imageError, setImageError] = useState('');
+  const initialTag = (task.tag ?? '').trim();
+  const normalizedTag = initialTag.toLowerCase();
+  const hasPresetTag = Object.hasOwn(TAGS, normalizedTag);
+  const [tagType, setTagType] = useState(() => (
+    hasPresetTag ? normalizedTag : initialTag ? 'custom' : ''
+  ));
+  const [customTag, setCustomTag] = useState(() => (
+    hasPresetTag ? '' : initialTag
+  ));
   // Estado do formulário começa com os valores da task (ou padrões)
   const [f, setF] = useState({
     title: task.title ?? '', desc: task.desc ?? '', prio: task.prio ?? 'media',
-    pts: task.pts ?? 3, tag: task.tag ?? '', status: task.status ?? 'todo',
+    start_date: task.start_date ?? (task.id ? '' : today()), status: task.status ?? 'todo',
     sprint: task.sprint ?? defaultSprint, image: task.image ?? '',
   });
   const set = k => e => setF(current => ({ ...current, [k]: e.target.value }));
@@ -38,7 +48,8 @@ export default function TaskDialog({ task, sprints, defaultSprint, onSave, onDel
   const save = () => {
     if (!f.title.trim()) return;
     onSave({
-      ...task, ...f, title: f.title.trim(), tag: f.tag.trim(), pts: +f.pts,
+      ...task, ...f, title: f.title.trim(),
+      tag: tagType === 'custom' ? customTag.trim() : tagType,
       image: f.image || null,
       id: task.id || uid(), created: task.created || today(), done_at: task.done_at ?? null,
     });
@@ -46,17 +57,35 @@ export default function TaskDialog({ task, sprints, defaultSprint, onSave, onDel
 
   return (
     <dialog ref={ref} onClose={onClose}>
-      <h2>{editing ? 'Editar task' : 'Nova task'}</h2>
+      <div className="dialog-heading">
+        <span className="eyebrow">{editing ? 'ATUALIZE SUA TASK' : 'ADICIONE UMA NOVA ENTREGA'}</span>
+        <h2>{editing ? 'Editar task' : 'Nova task'}</h2>
+        <p>Defina prioridade, data e etapa para manter seu quadro organizado.</p>
+      </div>
       <label>Título</label><input value={f.title} onChange={set('title')} autoFocus />
       <label>Descrição</label><textarea value={f.desc} onChange={set('desc')} />
       <div className="two">
         <div><label>Prioridade</label>
-          <select value={f.prio} onChange={set('prio')}>
-            <option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option>
-          </select></div>
-        <div><label>Pontos</label>
-          <select value={f.pts} onChange={set('pts')}>{[1, 2, 3, 5, 8, 13].map(n => <option key={n}>{n}</option>)}</select></div>
-        <div><label>Etiqueta</label><input value={f.tag} onChange={set('tag')} placeholder="ex: backend, bug" /></div>
+          <div className="priority-control">
+            <select value={f.prio} onChange={set('prio')}>
+              <option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option>
+            </select>
+            <PriorityFlag priority={f.prio} />
+          </div>
+        </div>
+        <div><label>Data de início</label>
+          <input type="date" value={f.start_date} onChange={set('start_date')} /></div>
+        <div><label>Etiqueta</label>
+          <select value={tagType} onChange={e => setTagType(e.target.value)}>
+            <option value="">Sem etiqueta</option>
+            {Object.entries(TAGS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <option value="custom">Personalizada</option>
+          </select>
+          {tagType === 'custom' && (
+            <input aria-label="Etiqueta personalizada" value={customTag}
+              onChange={e => setCustomTag(e.target.value)} placeholder="Digite uma etiqueta" />
+          )}
+        </div>
         <div><label>Status</label>
           <select value={f.status} onChange={set('status')}>{COLS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
       </div>

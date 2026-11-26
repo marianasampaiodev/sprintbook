@@ -9,7 +9,11 @@ export default function SprintDialog({ nextNumber, onSave, onClose }) {
 
   return (
     <dialog ref={ref} onClose={onClose}>
-      <h2>Nova sprint</h2>
+      <div className="dialog-heading">
+        <span className="eyebrow">NOVO CICLO DE TRABALHO</span>
+        <h2>Nova sprint</h2>
+        <p>Escolha um objetivo e o período para sua próxima entrega.</p>
+      </div>
       <label>Nome</label><input value={f.name} onChange={set('name')} />
       <label>Objetivo</label><textarea style={{ minHeight: 60 }} value={f.goal} onChange={set('goal')} />
       <div className="two">

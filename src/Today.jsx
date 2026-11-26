@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { today, br, uid } from './utils';
+import { TaskDate } from './TaskBadges';
 
 export default function Today({ S, onAdd, onRemove }) {
   const [date, setDate] = useState(today()); // dia que está sendo visto
@@ -46,7 +47,7 @@ export default function Today({ S, onAdd, onRemove }) {
         <h3>Tasks concluídas ({doneTasks.length})</h3>
         {doneTasks.length === 0
           ? <div className="muted" style={{ fontSize: 14 }}>Nada concluído neste dia.</div>
-          : doneTasks.map(t => <div className="sug" key={t.id}><span>{t.title}</span><span className="chip">{t.pts} pts</span></div>)}
+          : doneTasks.map(t => <div className="sug" key={t.id}><span>{t.title}</span><TaskDate date={t.start_date} /></div>)}
       </div>
     </div>
   );
